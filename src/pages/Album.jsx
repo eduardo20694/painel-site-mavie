@@ -1,13 +1,15 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 
+const API = "https://api-mavie-production.up.railway.app";
+
 function Album() {
   const { id } = useParams();
   const navigate = useNavigate();
 
   const [fotos, setFotos] = useState([]);
   const [modalOpen, setModalOpen] = useState(false);
-  const [file, setFile] = useState(null);
+  const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
 
@@ -16,33 +18,46 @@ function Album() {
   }, []);
 
   const carregarFotos = async () => {
-    const res = await fetch(`http://localhost:5000/fotos/${id}`);
-    const data = await res.json();
-    setFotos(data);
+    try {
+      const res = await fetch(`${API}/fotos/${id}`);
+      const data = await res.json();
+      setFotos(data);
+    } catch (err) {
+      console.error("Erro ao carregar fotos:", err);
+    }
   };
 
   const handleUpload = async () => {
-    if (!file) return;
+    if (files.length === 0) return;
 
     setLoading(true);
     setSuccess(false);
 
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("album_id", id);
+    try {
+      // 🚀 envio paralelo (muito mais rápido)
+      await Promise.all(
+        files.map((file) => {
+          const formData = new FormData();
+          formData.append("file", file);
+          formData.append("album_id", id);
 
-    await fetch("http://localhost:5000/upload", {
-      method: "POST",
-      body: formData,
-    });
+          return fetch(`${API}/upload`, {
+            method: "POST",
+            body: formData,
+          });
+        })
+      );
+
+      setSuccess(true);
+      setFiles([]);
+      carregarFotos();
+
+      setTimeout(() => setModalOpen(false), 1500);
+    } catch (err) {
+      console.error("Erro no upload:", err);
+    }
 
     setLoading(false);
-    setSuccess(true);
-    setFile(null);
-    carregarFotos();
-
-    // fecha modal depois de 1.5s
-    setTimeout(() => setModalOpen(false), 1500);
   };
 
   return (
@@ -62,7 +77,7 @@ function Album() {
             {f.url.includes("videos") ? (
               <video src={f.url} style={media} controls />
             ) : (
-              <img src={f.url} style={media} />
+              <img src={f.url} style={media} alt="" />
             )}
           </div>
         ))}
@@ -73,30 +88,36 @@ function Album() {
         </div>
       </div>
 
-      {/* MODAL DE UPLOAD */}
+      {/* MODAL */}
       {modalOpen && (
         <div style={overlay}>
           <div style={modal}>
-            <h3>Adicionar Foto/Video</h3>
+            <h3>Adicionar Fotos/Vídeos</h3>
 
             {!loading && !success && (
               <>
                 <input
                   type="file"
                   accept="image/*,video/*"
-                  onChange={(e) => setFile(e.target.files[0])}
+                  multiple
+                  onChange={(e) =>
+                    setFiles(Array.from(e.target.files))
+                  }
                   style={fileInput}
                 />
-                {file && (
+
+                {files.length > 0 && (
                   <button style={btn} onClick={handleUpload}>
-                    Enviar
+                    Enviar {files.length} arquivos
                   </button>
                 )}
               </>
             )}
 
             {loading && <div style={loading}>⏳ Enviando...</div>}
-            {success && <div style={successText}>✅ Enviado com sucesso!</div>}
+            {success && (
+              <div style={successText}>✅ Enviado com sucesso!</div>
+            )}
 
             <button style={closeBtn} onClick={() => setModalOpen(false)}>
               X
